@@ -116,19 +116,19 @@ def main():
         channel = CHANNEL_BETA
 
     tags_to_push = [args.tag]
-    if channel == CHANNEL_DEV:
-        tags_to_push.append("dev")
-    elif channel == CHANNEL_BETA:
-        tags_to_push.append("beta")
-    elif channel == CHANNEL_RELEASE:
-        # Additionally push to beta
-        tags_to_push.append("beta")
-        tags_to_push.append("latest")
+    # if channel == CHANNEL_DEV:
+    #     tags_to_push.append("dev")
+    # elif channel == CHANNEL_BETA:
+    #     tags_to_push.append("beta")
+    # elif channel == CHANNEL_RELEASE:
+    #     # Additionally push to beta
+    #     tags_to_push.append("beta")
+    #     tags_to_push.append("latest")
 
-        # Compatibility with HA tags
-        if major_minor_version:
-            tags_to_push.append("stable")
-            tags_to_push.append(major_minor_version)
+    #     # Compatibility with HA tags
+    #     if major_minor_version:
+    #         tags_to_push.append("stable")
+    #         tags_to_push.append(major_minor_version)
 
     if args.command == "build":
         # 1. pull cache image
@@ -141,7 +141,7 @@ def main():
         cache_img = f"ghcr.io/{params.build_to}:{cache_tag}"
 
         imgs = [f"{params.build_to}:{tag}" for tag in tags_to_push]
-        imgs += [f"ghcr.io/{params.build_to}:{tag}" for tag in tags_to_push]
+        # imgs += [f"ghcr.io/{params.build_to}:{tag}" for tag in tags_to_push]
 
         # 3. build
         cmd = [

@@ -34,28 +34,32 @@ RUN \
         python3-wheel=0.38.4-2 \
         iputils-ping=3:20221126-1 \
         git=1:2.39.2-1.1 \
-        curl=7.88.1-10+deb12u5 \
+        curl=7.88.1-10+deb12u6 \
         openssh-client=1:9.2p1-2+deb12u2 \
         python3-cffi=1.15.1-5 \
         libcairo2=1.16.0-7 \
         libmagic1=1:5.44-3 \
-        patch=2.7.6-7; \
-    if [ "$TARGETARCH$TARGETVARIANT" = "armv7" ]; then \
-        apt-get install -y --no-install-recommends \
-          build-essential=12.9 \
-          python3-dev=3.11.2-1+b1 \
-          zlib1g-dev=1:1.2.13.dfsg-1 \
-          libjpeg-dev=1:2.1.5-2 \
-          libfreetype-dev=2.12.1+dfsg-5 \
-          libssl-dev=3.0.11-1~deb12u2 \
-          libffi-dev=3.4.4-1 \
-          libopenjp2-7=2.5.0-2 \
-          libtiff6=4.5.0-6+deb12u1 \
-          cargo=0.66.0+ds1-1 \
-          pkg-config=1.8.1-1 \
-          gcc-arm-linux-gnueabihf=4:12.2.0-3; \
-    fi; \
-    rm -rf \
+        patch=2.7.6-7 \
+    && ( \
+        ( \
+            [ "$TARGETARCH$TARGETVARIANT" = "armv7" ] && \
+                apt-get install -y --no-install-recommends \
+                build-essential=12.9 \
+                python3-dev=3.11.2-1+b1 \
+                zlib1g-dev=1:1.2.13.dfsg-1 \
+                libjpeg-dev=1:2.1.5-2 \
+                libfreetype-dev=2.12.1+dfsg-5+deb12u3 \
+                libssl-dev=3.0.13-1~deb12u1 \
+                libffi-dev=3.4.4-1 \
+                libopenjp2-7=2.5.0-2 \
+                libtiff6=4.5.0-6+deb12u1 \
+                cargo=0.66.0+ds1-1 \
+                pkg-config=1.8.1-1 \
+                gcc-arm-linux-gnueabihf=4:12.2.0-3 \
+        ) \
+        || [ "$TARGETARCH$TARGETVARIANT" != "armv7" ] \
+    ) \
+    && rm -rf \
         /tmp/* \
         /var/{cache,log}/* \
         /var/lib/apt/lists/*
@@ -81,11 +85,13 @@ RUN \
     fi; \
     pip3 install \
     --break-system-packages --no-cache-dir \
-    platformio==6.1.13 \
+    # Keep platformio version in sync with requirements.txt
+    platformio==6.1.15 \
     # Change some platformio settings
     && platformio settings set enable_telemetry No \
     && platformio settings set check_platformio_interval 1000000 \
-    && mkdir -p /piolibs
+    && mkdir -p /piolibs \
+    && mkdir -p /cache
 
 
 # First install requirements to leverage caching when requirements don't change
@@ -100,6 +106,9 @@ RUN --mount=type=tmpfs,target=/root/.cargo if [ "$TARGETARCH$TARGETVARIANT" = "a
     --break-system-packages --no-cache-dir -r /requirements.txt -r /requirements_optional.txt \
     && /platformio_install_deps.py /platformio.ini --libraries
 
+# Avoid unsafe git error when container user and file config volume permissions don't match
+RUN git config --system --add safe.directory '*'
+
 
 # ======================= docker-type image =======================
 FROM base AS docker
@@ -110,7 +119,8 @@ RUN if [ "$TARGETARCH$TARGETVARIANT" = "armv7" ]; then \
         export PIP_EXTRA_INDEX_URL="https://www.piwheels.org/simple"; \
   fi; \
   pip3 install \
-  --break-system-packages --no-cache-dir --no-use-pep517 -e /esphome
+  --break-system-packages --no-cache-dir -e /esphome
+#   && /platformio_install_deps.py /esphome/digo/platformio.ini --libraries --platforms --tools
 
 # Settings for dashboard
 ENV USERNAME="" PASSWORD=""
@@ -122,14 +132,22 @@ EXPOSE 6052
 HEALTHCHECK --interval=30s --timeout=30s \
   CMD curl --fail http://localhost:6052/version -A "HealthCheck" || exit 1
 
-COPY docker/docker_entrypoint.sh /entrypoint.sh
+COPY docker/docker_entrypoint.sh /digo.sh
+
+WORKDIR /esphome/digo/examples
+RUN cp -r /esphome/digo/components/* /esphome/esphome/components/
+RUN /digo.sh compile ct4wf.yaml
+RUN /digo.sh compile plwf.yaml
+RUN /digo.sh compile rgbw.yaml
+RUN /digo.sh compile whwf.yaml
+RUN rm -rf .esphome
 
 # The directory the user should mount their configuration files to
 VOLUME /config
 WORKDIR /config
 # Set entrypoint to esphome (via a script) so that the user doesn't have to type 'esphome'
 # in every docker command twice
-ENTRYPOINT ["/entrypoint.sh"]
+ENTRYPOINT ["/digo.sh"]
 # When no arguments given, start the dashboard in the workdir
 CMD ["dashboard", "/config"]
 
@@ -160,7 +178,7 @@ RUN if [ "$TARGETARCH$TARGETVARIANT" = "armv7" ]; then \
         export PIP_EXTRA_INDEX_URL="https://www.piwheels.org/simple"; \
   fi; \
   pip3 install \
-  --break-system-packages --no-cache-dir --no-use-pep517 -e /esphome
+  --break-system-packages --no-cache-dir -e /esphome
 
 # Labels
 LABEL \
@@ -186,8 +204,8 @@ RUN \
         clang-format-13=1:13.0.1-11+b2 \
         clang-tidy-14=1:14.0.6-12 \
         patch=2.7.6-7 \
-        software-properties-common=0.99.30-4 \
-        nano=7.2-1 \
+        software-properties-common=0.99.30-4.1~deb12u1 \
+        nano=7.2-1+deb12u1 \
         build-essential=12.9 \
         python3-dev=3.11.2-1+b1 \
     && rm -rf \

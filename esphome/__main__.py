@@ -7,6 +7,12 @@ import re
 import sys
 import time
 from datetime import datetime
+from pathlib import Path
+import subprocess
+import hashlib
+import zlib
+import json
+import zipfile
 
 import argcomplete
 
@@ -998,6 +1004,46 @@ def parse_args(argv):
     return parser.parse_args(arguments)
 
 
+def release_digo_package():
+    try:
+        project = CORE.config["esphome"]["project"]
+        _, _, model = project["name"].partition(".")
+        fw, _, hw = project["version"].partition(".")
+
+        release = Path("release")
+        release.mkdir(parents=True, exist_ok=True)
+        fimware_factory = CORE.relative_pioenvs_path(CORE.name, "firmware-factory.bin")
+
+        subprocess.run(["cp", str(Path(CORE.firmware_bin)), str(release)], check=True)
+        subprocess.run(["cp", str(Path(fimware_factory)), str(release)], check=True)
+
+        checksum = 0
+        md5 = hashlib.md5()
+
+        with open(CORE.firmware_bin, "rb") as f:
+            for chunk in iter(lambda: f.read(4096), b""):
+                md5.update(chunk)
+                checksum = zlib.crc32(chunk, checksum)
+
+        info = {
+            "model": model,
+            "firmware": int(fw),
+            "hardware": int(hw),
+            "channel": 0,
+            "MD5": md5.hexdigest(),
+            "checksum": checksum & 0xFFFFFFFF,
+        }
+        with open("release/info.txt", "w") as file:
+            file.write(json.dumps(info))
+        with zipfile.ZipFile("release/ota.zip", "w") as zipf:
+            zipf.write("release/info.txt", "info.txt")
+            zipf.write("release/firmware.bin", "firmware.bin")
+        return 0
+    except EsphomeError as e:
+        _LOGGER.error(e)
+        return 1
+
+
 def run_esphome(argv):
     args = parse_args(argv)
     CORE.dashboard = args.dashboard
@@ -1056,6 +1102,7 @@ def run_esphome(argv):
         if rc != 0:
             return rc
 
+        release_digo_package()
         CORE.reset()
     return 0
 
