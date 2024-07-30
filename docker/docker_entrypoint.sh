@@ -26,5 +26,5 @@ export PLATFORMIO_CACHE_DIR="${pio_cache_base}/cache"
 if [[ -d /build ]]; then
     export ESPHOME_BUILD_PATH=/build
 fi
-
+echo "$@"
 exec esphome "$@"
